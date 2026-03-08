@@ -14,7 +14,16 @@ zig build
 zig build run -- Safari
 zig build run -- Notes
 zig build run -- Slack
+zig build run -- --depth 5 Finder
+zig build run -- --focus-only Finder
+zig build run -- --show-values Finder
 ```
+
+## Flags
+
+- `--depth <n>`: maximum traversal depth (default `20`)
+- `--focus-only`: trace from the focused AX element instead of the application root
+- `--show-values`: include `value="..."` lines for nodes that expose `AXValue`
 
 ## Example Output
 

@@ -27,6 +27,7 @@ typedef struct { CFIndex location; CFIndex length; } CFRange;
 /* Accessibility API */
 int AXIsProcessTrusted(void);
 AXUIElementRef AXUIElementCreateApplication(pid_t pid);
+uint32_t AXUIElementGetTypeID(void);
 int AXUIElementCopyAttributeNames(AXUIElementRef element, CFArrayRef* names);
 int AXUIElementCopyAttributeValue(AXUIElementRef element, CFStringRef attribute, CFTypeRef* value);
 int AXUIElementGetAttributeValueCount(AXUIElementRef element, CFStringRef attribute, CFIndex* count);

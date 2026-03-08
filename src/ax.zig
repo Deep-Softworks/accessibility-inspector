@@ -14,11 +14,13 @@ const ATTR_ROLE = "AXRole\x00";
 const ATTR_VALUE = "AXValue\x00";
 const ATTR_SELECTED_TEXT_RANGE = "AXSelectedTextRange\x00";
 const ATTR_CHILDREN = "AXChildren\x00";
+const ATTR_FOCUSED_UI_ELEMENT = "AXFocusedUIElement\x00";
 
 var _attr_role: ?c.CFStringRef = null;
 var _attr_value: ?c.CFStringRef = null;
 var _attr_selected_range: ?c.CFStringRef = null;
 var _attr_children: ?c.CFStringRef = null;
+var _attr_focused_ui_element: ?c.CFStringRef = null;
 
 fn attrRole() c.CFStringRef {
     if (_attr_role == null) {
@@ -43,6 +45,12 @@ fn attrChildren() c.CFStringRef {
         _attr_children = c.CFStringCreateWithCString(null, ATTR_CHILDREN.ptr, c.kCFStringEncodingUTF8);
     }
     return _attr_children.?;
+}
+fn attrFocusedUIElement() c.CFStringRef {
+    if (_attr_focused_ui_element == null) {
+        _attr_focused_ui_element = c.CFStringCreateWithCString(null, ATTR_FOCUSED_UI_ELEMENT.ptr, c.kCFStringEncodingUTF8);
+    }
+    return _attr_focused_ui_element.?;
 }
 
 pub const AttributeNames = struct {
@@ -189,6 +197,19 @@ pub fn getSelectedRange(element: c.AXUIElementRef) ?SelectedRange {
         .location = @intCast(range.location),
         .length = @intCast(range.length),
     };
+}
+
+pub fn getFocusedElement(element: c.AXUIElementRef) ?c.AXUIElementRef {
+    const value_ref = getAttribute(element, attrFocusedUIElement()) orelse return null;
+    const value = value_ref orelse return null;
+    if (c.CFGetTypeID(value) != c.AXUIElementGetTypeID()) {
+        c.CFRelease(value);
+        return null;
+    }
+
+    // AXUIElementCopyAttributeValue returns a retained object we hand to caller.
+    const focused: c.AXUIElementRef = @ptrCast(@alignCast(value));
+    return focused;
 }
 
 fn cfStringToOwned(allocator: std.mem.Allocator, value: c.CFStringRef) ?[]const u8 {

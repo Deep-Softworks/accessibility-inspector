@@ -5,6 +5,13 @@ const printer = @import("print.zig");
 
 const default_depth: usize = 20;
 
+const Options = struct {
+    app_name: []const u8,
+    depth: usize = default_depth,
+    focus_only: bool = false,
+    show_values: bool = false,
+};
+
 pub fn main() void {
     run() catch |err| {
         if (err == error.InvalidArguments or
@@ -31,12 +38,7 @@ fn run() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    if (args.len != 2) {
-        try printUsage(stderr);
-        return error.InvalidArguments;
-    }
-
-    const app_name = args[1];
+    const options = try parseOptions(args, stderr);
 
     if (!ax.hasAccessibilityPermission()) {
         try stderr.writeAll(
@@ -47,23 +49,91 @@ fn run() !void {
         return error.AccessibilityPermissionRequired;
     }
 
-    const pid = try resolveAppPid(allocator, app_name);
+    const pid = try resolveAppPid(allocator, options.app_name);
     const app = ax.createApplication(pid);
     defer ax.c.CFRelease(@ptrCast(app));
+
+    const root_element = if (options.focus_only) blk: {
+        const focused = ax.getFocusedElement(app) orelse {
+            try stderr.print("No focused accessibility element found for \"{s}\".\n", .{options.app_name});
+            return error.TreeUnavailable;
+        };
+        break :blk focused;
+    } else app;
+    defer if (options.focus_only) {
+        ax.c.CFRelease(@ptrCast(root_element));
+    };
 
     var arena_state = std.heap.ArenaAllocator.init(allocator);
     defer arena_state.deinit();
 
-    const root = try tree.buildTree(arena_state.allocator(), app, default_depth) orelse {
-        try stderr.print("Unable to inspect accessibility tree for \"{s}\".\n", .{app_name});
+    const root = try tree.buildTree(arena_state.allocator(), root_element, options.depth) orelse {
+        try stderr.print("Unable to inspect accessibility tree for \"{s}\".\n", .{options.app_name});
         return error.TreeUnavailable;
     };
 
-    try printer.printTree(stdout, root);
+    try printer.printTree(stdout, root, .{ .show_values = options.show_values });
 }
 
 fn printUsage(writer: anytype) !void {
-    try writer.writeAll("Usage: axtrace <app-name>\n");
+    try writer.writeAll(
+        "Usage: axtrace [--depth <n>] [--focus-only] [--show-values] <app-name>\n" ++
+            "  --depth <n>     Maximum traversal depth (default: 20)\n" ++
+            "  --focus-only    Trace only the focused accessibility element subtree\n" ++
+            "  --show-values   Print value=\"...\" lines when available\n",
+    );
+}
+
+fn parseOptions(args: []const []const u8, stderr: anytype) !Options {
+    var options: Options = undefined;
+    options.depth = default_depth;
+    options.focus_only = false;
+    options.show_values = false;
+    options.app_name = "";
+
+    var index: usize = 1;
+    while (index < args.len) : (index += 1) {
+        const arg = args[index];
+        if (std.mem.eql(u8, arg, "--focus-only")) {
+            options.focus_only = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--show-values")) {
+            options.show_values = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--depth")) {
+            index += 1;
+            if (index >= args.len) {
+                try printUsage(stderr);
+                return error.InvalidArguments;
+            }
+
+            const parsed_depth = std.fmt.parseUnsigned(usize, args[index], 10) catch {
+                try printUsage(stderr);
+                return error.InvalidArguments;
+            };
+            options.depth = parsed_depth;
+            continue;
+        }
+        if (std.mem.startsWith(u8, arg, "--")) {
+            try printUsage(stderr);
+            return error.InvalidArguments;
+        }
+        if (options.app_name.len != 0) {
+            try printUsage(stderr);
+            return error.InvalidArguments;
+        }
+
+        options.app_name = arg;
+    }
+
+    if (options.app_name.len == 0) {
+        try printUsage(stderr);
+        return error.InvalidArguments;
+    }
+
+    return options;
 }
 
 fn resolveAppPid(allocator: std.mem.Allocator, app_name: []const u8) !ax.c.pid_t {
